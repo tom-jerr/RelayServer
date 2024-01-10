@@ -1,0 +1,1 @@
+add_library(RelayLib STATIC Buffer.cpp Utils.cpp Epoll.cpp Logger.cpp)
