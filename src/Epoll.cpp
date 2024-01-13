@@ -8,11 +8,12 @@
 #include <csignal>
 #include <iostream>
 
+#include "../include/Logger.h"
 #include "../include/Server.h"
 #include "../include/Utils.h"
-#include "Logger.h"
 
-int EpollEvent::exit_flag_ = 0;  // 需要在外部进行声明
+int EpollEvent::exit_flag_ = 0;  // 需要在外部进行声明-zx
+static size_t start_idx = 0;     // 读取报文的起始位置
 
 EpollEvent::EpollEvent() : epoll_sockfd_(-1), epoll_fd_(-1) {
   Signal(SIGINT, SigIntHandler);
@@ -66,32 +67,88 @@ int EpollEvent::RemoveClient(const int &connfd) {
   return 0;
 }
 
-int EpollEvent::RecvData(const int &connfd, char *buffer, const size_t &len,
+int EpollEvent::RecvData(MessageInfo *msg, char *buffer, const size_t &len,
                          const size_t &id) {
-  int ret = read(connfd, buffer, len);
+  // 获取头部和连接描述符
+  HeaderInfo *header = &msg->header;
+  int connfd = header->connfd;
+  /*
+    非阻塞接收数据
+  */
+  int ret = recv(connfd, buffer, len, 0);
   if (ret < 0) {
     if (errno != EWOULDBLOCK) {
       std::cout << "Read error" << std::endl;
-      logger_->Log(Logger::ERROR, "EpollEvent:\tclient %d recv error\n", id);
+      logger_->Log(Logger::ERROR,
+                   "RECV ERROR: EpollEvent:\tclient %d recv error\n", id);
       return -1;
     }
+    /*
+      记录EWOULDBLOCK事件
+    */
+    logger_->Log(Logger::ERROR,
+                 "EpollEvent:\tEWOULDBLOCK ERROR: client %d recv EWOULDBLOCK\n",
+                 id);
   } else if (ret == 0) {
     /*
       客户端关闭连接
     */
-    shutdown(connfd, SHUT_WR);
+    shutdown(connfd, SHUT_WR);  // 不能向套接字写数据
     RemoveClient(connfd);
     return 0;
+  } else {
+    /*
+      接收报文
+    */
+    if (ret >= len) {
+      /*
+        可以接收全部报文，如果执行只会执行一次
+      */
+      header->head_recv = true;  // 标记已经接收到报文头，下次接收报文体
+      memcpy((char *)header, buffer, HEADERSZ);
+      header->recv_idx += HEADERSZ;
+
+      header->body_recv = true;  // 标记已经接收到报文体，直接结束过程
+      memcpy(buffer, buffer + HEADERSZ, len - HEADERSZ);
+      header->recv_idx += len - HEADERSZ;
+      ASSERT(header->recv_idx == header->len - 1);
+    } else if (ret >= HEADERSZ) {
+      /*
+        可以接收完整报文头和部分报文体
+      */
+      if (!header->head_recv) {
+        header->head_recv = true;  // 标记已经接收到报文头，下次接收报文体
+        memcpy((char *)header, buffer, HEADERSZ);
+        header->recv_idx += HEADERSZ;
+      }
+      if (ret > HEADERSZ) {
+        /*
+          接收到部分报文体
+        */
+        memcpy(buffer, buffer + HEADERSZ, ret - HEADERSZ);
+        header->recv_idx += ret - HEADERSZ;
+      } else {
+        /*
+          没有空间接收报文头，记录No space error
+        */
+        logger_->Log(Logger::ERROR,
+                     "EpollEvent:\tNO SPACE ERROR: client %d has no space to "
+                     "recv error\n",
+                     id);
+      }
+    }
   }
   return ret;
 }
 
-int EpollEvent::SendData(const int &connfd, const char *buffer,
+int EpollEvent::SendData(MessageInfo *msg, const char *buffer,
                          const size_t &len, const size_t &id) {
+  int connfd = msg->header.connfd;
   int ret = write(connfd, buffer, len);
   if (ret < 0) {
     if (errno != EWOULDBLOCK) {
-      logger_->Log(Logger::ERROR, "EpollEvent:\tclient %d send error\n", id);
+      logger_->Log(Logger::ERROR,
+                   "EpollEvent:\tSEND ERROR: client %d send error\n", id);
       return -1;
     }
   }
@@ -231,8 +288,7 @@ int EpollEvent::EventsHandler(struct epoll_event *events, const int &nready) {
         /*
           读取报头
         */
-        ssize_t n = RecvData(cur_client_msg->header.connfd,
-                             (char *)&cur_client_msg->header,
+        ssize_t n = RecvData(cur_client_msg, (char *)&cur_client_msg->header,
                              sizeof(HeaderInfo), cur_client);
         if (n <= 0) {
           continue;
@@ -240,7 +296,7 @@ int EpollEvent::EventsHandler(struct epoll_event *events, const int &nready) {
         /*
           读取报文
         */
-        n = RecvData(cur_client_msg->header.connfd, cur_client_msg->buffer,
+        n = RecvData(cur_client_msg, cur_client_msg->buffer,
                      cur_client_msg->header.len, cur_client);
         if (n <= 0) {
           continue;
@@ -254,8 +310,7 @@ int EpollEvent::EventsHandler(struct epoll_event *events, const int &nready) {
           /*
             发送报头
           */
-          ssize_t n = SendData(dst_client_msg->header.connfd,
-                               (char *)&cur_client_msg->header,
+          ssize_t n = SendData(dst_client_msg, (char *)&cur_client_msg->header,
                                sizeof(HeaderInfo), cur_client);
           if (n <= 0) {
             continue;
@@ -263,7 +318,7 @@ int EpollEvent::EventsHandler(struct epoll_event *events, const int &nready) {
           /*
             发送报文
           */
-          n = SendData(dst_client_msg->header.connfd, cur_client_msg->buffer,
+          n = SendData(dst_client_msg, cur_client_msg->buffer,
                        cur_client_msg->header.len, cur_client);
           if (n <= 0) {
             continue;

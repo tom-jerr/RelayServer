@@ -63,12 +63,12 @@ class EpollEvent {
   /*
     发送数据
   */
-  int SendData(const int& connfd, const char* buffer, const size_t& len,
+  int SendData(MessageInfo* msg, const char* buffer, const size_t& len,
                const size_t& id);
   /*
     接收数据
   */
-  int RecvData(const int& connfd, char* buffer, const size_t& len,
+  int RecvData(MessageInfo* msg, char* buffer, const size_t& len,
                const size_t& id);
   /*
     关闭全部连接
