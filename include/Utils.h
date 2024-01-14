@@ -33,14 +33,13 @@
   报文头信息
 */
 struct HeaderInfo {
-  size_t id;            // 报文编号
-  size_t cliId;         // 客户端编号
-  size_t len;           // 报文长度
-  int connfd;           // 连接描述符
-  bool head_recv;       // 报文头是否接收完毕
-  bool body_recv;       // 报文体是否接收完毕
-  size_t recv_idx = 0;  // 已经接收到的报文位置
-  FILE* fp;  // 文件指针(对端为连接，持久化信息所在处)
+  size_t id;               // 报文编号
+  size_t cliId;            // 客户端编号
+  size_t len;              // 报文长度
+  int connfd;              // 连接描述符
+  bool head_recv = false;  // 报文头是否接收完毕
+  bool body_recv = false;  // 报文体是否接收完毕
+  size_t recv_idx = 0;     // 已经接收到的报文位置
 };
 /*
   报文信息
