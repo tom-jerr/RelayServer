@@ -43,10 +43,10 @@ class RelayServer {
   ~RelayServer();
 
   /*
-    初始化epoll并启动
+    初始化server并启动
   */
-  void StartEpoll(const std::string& ipaddr = "127.0.0.1",
-                  const int port = 1234);
+  void StartServer(const std::string& ipaddr = "127.0.0.1",
+                   const int port = 1234);
   /*
     处理epoll的事件
   */
@@ -66,12 +66,11 @@ class RelayServer {
   /*
     发送数据
   */
-  int SendData(MessageInfo* msg, const char* buffer, const size_t& len);
+  int SendData(MessageInfo* dstmsg, MessageInfo* srcmsg);
   /*
     接收数据
   */
-  int RecvData(MessageInfo* msg, char* buffer, const size_t& len,
-               const size_t& id);
+  int RecvData(MessageInfo* msg, const size_t& id);
   /*
     向文件中写入接收到的数据
   */

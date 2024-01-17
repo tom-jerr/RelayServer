@@ -1,0 +1,2 @@
+add_executable(EPOLLTEST EpollTest.cpp)
+target_link_libraries(EPOLLTEST PRIVATE RelayLib)

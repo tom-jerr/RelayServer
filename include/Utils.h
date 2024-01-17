@@ -24,30 +24,36 @@
 */
 #define MAXEVENTS 64  // EPOLL最大事件数，use in epoll_create
 #define MAXHANDLERS 64  // 最大的事件处理器数, use in epoll_event[MAXHANDLERS]
-#define MAXLINES 1024                        // 一次读取的最大行数
+#define MAXCHARS 4                           // 最大字符数
 #define BUFFERSZ 2048                        // Buffer初始大小
 #define BACKLOG 128                          // listen队列的最大长度
 #define GetDstId(x) (x % 2 ? x - 1 : x + 1)  // 获取目的客户端编号
 #define HEADERSZ (sizeof(HeaderInfo))        // 头部大小
 /*
-  报文头信息
+  报文头信息：仅仅该信息需要网络传输
 */
+#pragma pack(1)
 struct HeaderInfo {
-  size_t id;               // 报文编号
-  size_t cliId;            // 客户端编号
-  size_t len;              // 报文长度
-  int connfd;              // 连接描述符
-  bool head_recv = false;  // 报文头是否接收完毕
-  bool body_recv = false;  // 报文体是否接收完毕
-  size_t recv_idx = 0;     // 已经接收到的报文位置
+  uint32_t cliId;  // 客户端编号
+  uint16_t len;    // 报文长度(不包括头部)
 };
+#pragma pack()
 /*
   报文信息
 */
 struct MessageInfo {
-  HeaderInfo header;      // 报文头
-  char buffer[BUFFERSZ];  // 报文缓冲区
+  uint32_t connfd;           // 连接描述符
+  bool head_recv = false;    // 报文头是否接收完毕
+  bool body_recv = false;    // 报文体是否接收完毕
+  int recvlen = 0;           // 已经接收的报文长度
+  int unrecvlen = HEADERSZ;  // 未接收的报文长度(先接收头部)
+  HeaderInfo header;         // 报文头
+  char buffer[BUFFERSZ];     // 报文缓冲区
 };
+/*
+  解析头部信息
+*/
+int ParseHeader(HeaderInfo* header);
 /*
   地址转换函数
 */
@@ -72,6 +78,18 @@ int Listen(int fd, int n);
   连接Socket
 */
 int Connect(int fd, const struct sockaddr* servaddr, socklen_t len);
+/*
+  向fd中写入数据
+*/
+int Write(int fd, const void* buffer, size_t len);
+/*
+  从fd中读取数据
+*/
+int Read(int fd, void* buffer, size_t len);
+/*
+  关闭fd
+*/
+int Close(int fd);
 /*
   向epoll中加入事件
 */

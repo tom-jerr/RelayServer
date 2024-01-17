@@ -1,2 +1,2 @@
-add_executable(EPOLLTEST EpollTest.cpp)
-target_link_libraries(EPOLLTEST PRIVATE RelayLib)
+add_subdirectory(server)
+add_subdirectory(client)

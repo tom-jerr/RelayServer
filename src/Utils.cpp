@@ -8,6 +8,12 @@
 #include <cstdlib>
 #include <cstring>
 
+int ParseHeader(HeaderInfo* header) {
+  header->len = ntohs(header->len);
+  header->cliId = ntohs(header->cliId);
+  return header->len;
+}
+
 int InetPton(int af, const char* src, void* dst) {
   int ret = inet_pton(af, src, dst);
   ASSERT(ret > 0);
@@ -54,6 +60,24 @@ int Connect(int fd, const struct sockaddr* servaddr, socklen_t len) {
   if (ret == -1) {
     close(fd);
   }
+  ASSERT(ret != -1);
+  return ret;
+}
+
+int Write(int fd, const void* buffer, size_t len) {
+  int ret = write(fd, buffer, len);
+  ASSERT(ret != -1);
+  return ret;
+}
+
+int Read(int fd, void* buffer, size_t len) {
+  int ret = read(fd, buffer, len);
+  ASSERT(ret != -1);
+  return ret;
+}
+
+int Close(int fd) {
+  int ret = close(fd);
   ASSERT(ret != -1);
   return ret;
 }
