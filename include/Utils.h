@@ -24,11 +24,11 @@
 */
 #define MAXEVENTS 64  // EPOLL最大事件数，use in epoll_create
 #define MAXHANDLERS 64  // 最大的事件处理器数, use in epoll_event[MAXHANDLERS]
-#define MAXCHARS 4                           // 最大字符数
-#define BUFFERSZ 2048                        // Buffer初始大小
-#define BACKLOG 128                          // listen队列的最大长度
-#define GetDstId(x) (x % 2 ? x - 1 : x + 1)  // 获取目的客户端编号
-#define HEADERSZ (sizeof(HeaderInfo))        // 头部大小
+#define MAXCHARS 5                       // 最大字符数
+#define BUFFERSZ 2048                    // Buffer初始大小
+#define BACKLOG 128                      // listen队列的最大长度
+#define GetDstId(x) (x % 2 ? x : x + 1)  // 获取目的客户端编号
+#define HEADERSZ (sizeof(HeaderInfo))    // 头部大小
 /*
   报文头信息：仅仅该信息需要网络传输
 */
@@ -40,14 +40,16 @@ struct HeaderInfo {
 #pragma pack()
 /*
   报文信息
+  recvlen：最终长度为头部长度+报文体长度
+  unrecvlen：不停在头部长度和报文体长度间切换
 */
 struct MessageInfo {
+  HeaderInfo header;         // 报文头
   uint32_t connfd;           // 连接描述符
   bool head_recv = false;    // 报文头是否接收完毕
   bool body_recv = false;    // 报文体是否接收完毕
   int recvlen = 0;           // 已经接收的报文长度
-  int unrecvlen = HEADERSZ;  // 未接收的报文长度(先接收头部)
-  HeaderInfo header;         // 报文头
+  int unrecvlen = HEADERSZ;  // 未接收的报文长度
   char buffer[BUFFERSZ];     // 报文缓冲区
 };
 /*

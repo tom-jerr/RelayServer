@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 
 #include "../include/Logger.h"
 #include "../include/Utils.h"
@@ -14,8 +15,8 @@
 Logger logger = Logger("recv_client.log");
 
 ssize_t Readn(int fd, void *vptr, size_t n) {
-  size_t nleft;
-  ssize_t nread;
+  size_t nleft = 0;
+  ssize_t nread = 0;
   char *ptr;
 
   ptr = (char *)vptr;
@@ -44,19 +45,25 @@ void RecvMSG(FILE *fp, int sockfd) {
   char recvline[MAXCHARS + 1];
   int recvlen;
   HeaderInfo header;  // 收到的数据包的Header
-
+  int ret;
   while (1) {
-    if (Readn(sockfd, &header, sizeof(header)) !=
-        sizeof(header)) {  // 读取header
+    ret = Readn(sockfd, &header, sizeof(header));
+    if (ret != sizeof(header)) {  // 读取header
       fprintf(stderr, "echo_rpt: server terminated prematurely\n");
       return;
     }
+
     recvlen = ntohs(header.len);
-    if (Readn(sockfd, recvline, recvlen) != recvlen)  // 读取报文内容
+    ret = Readn(sockfd, recvline, recvlen);
+    if (ret != recvlen)  // 读取报文内容
     {
       fprintf(stderr, "echo_rpt: server terminated prematurely\n");
       return;
     }
+
+    // 打印recvline数组
+    std::cout << recvline << "\n";
+    logger.Log(Logger::INFO, recvline);
   }
 }
 
@@ -65,7 +72,7 @@ int main(int argc, char *argv[]) {
    客户端连接服务器
   */
   int sockfd;
-  struct sockaddr_in client_adddr;
+  struct sockaddr_in serv_addr;
   std::string ipaddr;
   std::string port;
   if (argc != 3) {
@@ -76,15 +83,17 @@ int main(int argc, char *argv[]) {
     port = argv[2];
   }
   sockfd = Socket(AF_INET, SOCK_STREAM, 0);
-  bzero(&client_adddr, sizeof(client_adddr));
+  bzero(&serv_addr, sizeof(serv_addr));
 
-  client_adddr.sin_family = AF_INET;
-  client_adddr.sin_port = htons(atoi(port.c_str()));
-  InetPton(AF_INET, ipaddr.c_str(), &client_adddr.sin_addr);
-  Connect(sockfd, (struct sockaddr *)&client_adddr, sizeof(client_adddr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(atoi(port.c_str()));
+  InetPton(AF_INET, ipaddr.c_str(), &serv_addr.sin_addr);
+  Connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
   logger.Log(Logger::INFO, "Connected to server %s:%s\n", ipaddr.c_str(),
              port.c_str());
-  printf("Connected to server %s:%s\n", ipaddr.c_str(), port.c_str());
+  logger.Log(Logger::INFO, "Connected sockfd %d\n", sockfd);
+  printf("Connected to server %s:%s sockfd %d\n", ipaddr.c_str(), port.c_str(),
+         sockfd);
   RecvMSG(stdin, sockfd);
   Close(sockfd);
 }

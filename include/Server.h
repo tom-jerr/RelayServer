@@ -28,9 +28,10 @@ class RelayServer {
   int epoll_sockfd_;                        // epoll接收连接fd
   int epoll_fd_;                            // epoll创建的fd
   static int exit_flag_;                    // 退出标志
-  size_t next_client_id_;                   // 下一个客户端ID
+  size_t next_client_id_ = 0;               // 下一个客户端ID
   bool temp_file_;                          // 服务器暂存客户端信息
   std::map<int, MessageInfo*> client_map_;  // 客户端connfd与MessageInfo的映射
+  std::map<int, MessageInfo*> client_id_map_;  // 客户端ID与MessageInfo的映射
   std::map<int, FILE*> client_file_map_;  // 客户端暂存信息文件指针
   Logger* logger_;                        // 日志
 

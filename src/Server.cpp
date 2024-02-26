@@ -28,7 +28,7 @@ RelayServer::RelayServer()
 RelayServer::RelayServer(bool support_tmpfile)
     : epoll_sockfd_(-1), epoll_fd_(-1), temp_file_(true) {
   Signal(SIGINT, SigIntHandler);
-  logger_ = new Logger("log.txt");
+  logger_ = new Logger("server.log");
 }
 
 RelayServer::~RelayServer() {
@@ -43,19 +43,13 @@ RelayServer::~RelayServer() {
   }
 }
 
-void RelayServer::UpdateNextClientId() {
-  for (size_t i = next_client_id_;; ++i) {
-    if (client_map_.find(i) == client_map_.end()) {
-      next_client_id_ = i;
-      return;
-    }
-  }
-}
+void RelayServer::UpdateNextClientId() { next_client_id_++; }
 
 int RelayServer::AddNewClient(MessageInfo *client) {
   client->header.cliId = next_client_id_;
-  UpdateNextClientId();
+  client_id_map_[next_client_id_] = client;
   client_map_[client->connfd] = client;
+  UpdateNextClientId();
   AddFd(epoll_fd_, client->connfd, 1, 0);
   logger_->Log(Logger::INFO,
                "RelayServer:\tClient %d is added\t(%d in total)\n",
@@ -67,6 +61,7 @@ int RelayServer::RemoveClient(const int &connfd) {
   ASSERT(client_map_.find(connfd) != client_map_.end());
   size_t cliId = client_map_[connfd]->header.cliId;
   client_map_.erase(connfd);
+  client_id_map_.erase(cliId);
   if (cliId < next_client_id_) {
     next_client_id_ = cliId;
   }
@@ -119,6 +114,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
   int connfd = msg->connfd;
   /*
     非阻塞接收数据
+    最多接收字节长度：BUFFERSZ-已经接收到的数据长度
   */
   int ret = recv(connfd, buffer + msg->recvlen, BUFFERSZ - msg->recvlen, 0);
   if (ret < 0) {
@@ -135,14 +131,14 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
         "RelayServer:\tEWOULDBLOCK ERROR: client %d recv EWOULDBLOCK\n", id);
   } else if (ret == 0) {
     /*
-      客户端关闭连接
+      客户端关闭连接，不再向套接字中写入数据
     */
-    shutdown(connfd, SHUT_WR);  // 发送FIN包
     RemoveClient(connfd);
+    shutdown(connfd, SHUT_WR);  // 发送FIN包
     return 0;
   } else {
     /*
-      接收报文
+      接收报文：头部+数据
     */
     for (;;) {
       if (ret >= msg->unrecvlen) {
@@ -151,9 +147,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
             接收头部，将未接收的报文长度设置为报文长度
           */
           msg->head_recv = true;
-          // 考虑可能部分接收的情况
-          memcpy(header + HEADERSZ - msg->unrecvlen, buffer + msg->recvlen,
-                 msg->unrecvlen);
+          // 解析头部数据，获取报文体长度
           int connetlen = ParseHeader(header);
 
           ret = ret - msg->unrecvlen;
@@ -171,16 +165,12 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
         /*
           部分接收
         */
-        if (!msg->head_recv) {
-          memcpy(header, buffer, ret);
-        }
         msg->recvlen += ret;
         msg->unrecvlen -= ret;
         break;
       }
     }
   }
-
   return ret;
 }
 
@@ -192,6 +182,7 @@ int RelayServer::SendData(MessageInfo *dstmsg, MessageInfo *srcmsg) {
   int ret = send(connfd, srcmsg->buffer, srcmsg->recvlen, 0);
   if (ret < 0) {
     if (errno != EWOULDBLOCK) {
+      RemoveClient(connfd);
       logger_->Log(Logger::ERROR,
                    "RelayServer:\tSEND ERROR: server send to client %d error\n",
                    id);
@@ -265,6 +256,7 @@ void RelayServer::StartServer(const std::string &ipaddr, const int port) {
     // 不超时等待事件发生
     int nfds = epoll_wait(epoll_fd_, events, MAXEVENTS, -1);
     if (nfds < 0) {
+      // INT信号中断
       if (exit_flag_) {
         ExitEpoll();
         break;
@@ -299,6 +291,7 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
       for (;;) {
         int connfd =
             accept(epoll_sockfd_, (struct sockaddr *)&clientaddr, &len);
+        logger_->Log(Logger::INFO, "RelayServer:\tconnfd %d\n", connfd);
         if (connfd == -1) {
           if ((errno == ECONNABORTED) || (errno == EWOULDBLOCK) ||
               (errno == EINTR) || (errno == EPROTO)) {
@@ -335,8 +328,8 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
       int dst_client = GetDstId(cur_client);
 
       MessageInfo *dst_client_msg = nullptr;
-      if (client_map_.find(dst_client) != client_map_.end()) {
-        dst_client_msg = client_map_[dst_client];
+      if (client_id_map_.find(dst_client) != client_id_map_.end()) {
+        dst_client_msg = client_id_map_[dst_client];
       }
 
       if (dst_client_msg == nullptr) {
@@ -344,11 +337,12 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
           目的客户端不存在
         */
         // 如果支持暂存，将报文写入文件
-        if (this->temp_file_) {
-          std::cout << "Save msg to server\n";
-          std::string file_name = std::to_string(cur_client) + "_file";
-          WriteMsg2File(cur_client, file_name);
-        }
+        // if (this->temp_file_) {
+        //   std::cout << "Save msg to server\n";
+        //   std::string file_name = std::to_string(cur_client) + "_file";
+        //   WriteMsg2File(cur_client, file_name);
+        // }
+        // logger_->Log(Logger::INFO, "INFO: dst client is not connected\n");
       }
 
       /*
@@ -364,20 +358,14 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
         Epoll有可写事件
       */
       if (events[i].events & EPOLLOUT) {
-        if (dst_client_msg != nullptr && dst_client_msg->recvlen == 0) {
-          logger_->Log(Logger::ERROR,
-                       "RelayServer:\tNO DATA ERROR: client %d has no data\n",
-                       dst_client);
-        } else {
-          if (dst_client_msg != nullptr) {
-            /*
-              发送报文
-            */
-            ssize_t n;
-            n = SendData(dst_client_msg, cur_client_msg);
-            if (n <= 0) {
-              continue;
-            }
+        if (dst_client_msg != nullptr) {
+          /*
+            发送报文
+          */
+          ssize_t n;
+          n = SendData(dst_client_msg, cur_client_msg);
+          if (n <= 0) {
+            continue;
           }
         }
       }

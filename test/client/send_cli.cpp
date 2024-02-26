@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 
 #include "../include/Logger.h"
 #include "../include/Utils.h"
@@ -13,22 +14,23 @@
 */
 Logger logger = Logger("send_client.log");
 void SendMSG(FILE *fp, int sockfd) {
-  char sendline[MAXCHARS + HEADERSZ + 1];
+  char sendline[MAXCHARS + HEADERSZ];
   HeaderInfo header;
   // 将头部预留出大小
   while (fgets(sendline + HEADERSZ, MAXCHARS + 1, fp) != NULL) {
-    int sendlen = strnlen(sendline + sizeof(HeaderInfo), MAXCHARS + 1);
+    std::cout << "Send message: " << sendline + HEADERSZ << std::endl;
+    int sendlen = strnlen(sendline + HEADERSZ, MAXCHARS + 1);
     printf("Length of message: %d\n", sendlen);
     sendline[sendlen + HEADERSZ - 1] = '\0';
     // 通过网络传输，需要改变字节序
-    printf("Transfer length: %ld\n", sendlen + HEADERSZ);
+    // printf("Transfer length: %ld\n", sendlen + HEADERSZ);
     header.len = htons(sendlen);
     memcpy(sendline, &header, HEADERSZ);
 
     logger.Log(Logger::INFO, "Send message: %s\n",
                sendline + sizeof(HeaderInfo));
 
-    Write(sockfd, sendline, sendlen + sizeof(HeaderInfo));
+    Write(sockfd, sendline, sendlen + HEADERSZ);
   }
 }
 
@@ -56,7 +58,9 @@ int main(int argc, char *argv[]) {
   Connect(sockfd, (struct sockaddr *)&client_adddr, sizeof(client_adddr));
   logger.Log(Logger::INFO, "Connected to server %s:%s\n", ipaddr.c_str(),
              port.c_str());
-  printf("Connected to server %s:%s\n", ipaddr.c_str(), port.c_str());
+  logger.Log(Logger::INFO, "Connected sockfd %d\n", sockfd);
+  printf("Connected to server %s:%s sockfd %d\n", ipaddr.c_str(), port.c_str(),
+         sockfd);
   SendMSG(stdin, sockfd);
   Close(sockfd);
 }
