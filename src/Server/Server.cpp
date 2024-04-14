@@ -45,15 +45,16 @@ RelayServer::~RelayServer() {
 
 void RelayServer::UpdateNextClientId() { next_client_id_++; }
 
-int RelayServer::AddNewClient(MessageInfo *client) {
-  client->header.cliId = next_client_id_;
-  client_id_map_[next_client_id_] = client;
-  client_map_[client->connfd] = client;
+int RelayServer::AddNewClient(MessageInfo *clientInfo) {
+  clientInfo->header.cliId = next_client_id_;
+  client_id_map_[next_client_id_] = clientInfo;
+  client_map_[clientInfo->connfd] = clientInfo;
   UpdateNextClientId();
-  AddFd(epoll_fd_, client->connfd, 1, 0);
+  AddFd(epoll_fd_, clientInfo->connfd, 1, 0);
   logger_->Log(Logger::INFO,
-               "RelayServer:\tClient %d is added\t(%d in total)\n",
-               client->header.cliId, client_map_.size());
+               "RelayServer:\tClient %d is added, fd is %d\t(%d in total)\n",
+               clientInfo->header.cliId, clientInfo->connfd,
+               client_map_.size());
   return 0;
 }
 
@@ -69,8 +70,8 @@ int RelayServer::RemoveClient(const int &connfd) {
   ASSERT(ret >= 0);
   DelFd(epoll_fd_, connfd);
   logger_->Log(Logger::INFO,
-               "RelayServer:\tClient %d is removed\t(%d in total)\n", cliId,
-               client_map_.size());
+               "RelayServer:\tClient %d is removed, fd is %d\t(%d in total)\n",
+               cliId, connfd, client_map_.size());
   return 0;
 }
 
@@ -107,16 +108,17 @@ char *RelayServer::ReadMsgFromFile(const size_t &id) {
   return buffer;
 }
 
-int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
+int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
+                          const size_t &fd) {
   // 获取头部和连接描述符
-  HeaderInfo *header = &msg->header;
+  // HeaderInfo *header = &msg->header;
   char *buffer = msg->buffer;
-  int connfd = msg->connfd;
+  // int connfd = msg->connfd;
   /*
     非阻塞接收数据
     最多接收字节长度：BUFFERSZ-已经接收到的数据长度
   */
-  int ret = recv(connfd, buffer + msg->recvlen, BUFFERSZ - msg->recvlen, 0);
+  int ret = recv(fd, buffer + msg->recvlen, BUFFERSZ - msg->recvlen, 0);
   if (ret < 0) {
     if (errno != EWOULDBLOCK) {
       logger_->Log(Logger::ERROR,
@@ -133,8 +135,14 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
     /*
       客户端关闭连接，不再向套接字中写入数据
     */
-    RemoveClient(connfd);
-    shutdown(connfd, SHUT_WR);  // 发送FIN包
+    if (msg->shutwr == 0) {
+      msg->shutwr = 1;
+      shutdown(fd, SHUT_WR);  // 发送FIN包
+    } else {
+      shutdown(fd, SHUT_RD);  // 发送FIN包
+    }
+    RemoveClient(fd);
+
     return 0;
   } else {
     /*
@@ -148,8 +156,19 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
           */
           msg->head_recv = true;
           // 解析头部数据，获取报文体长度
-          int connetlen = ParseHeader(header);
+          uint32_t header_cliID = msg->header.cliId;
+          memcpy(&msg->header + HEADERSZ - msg->unrecvlen,
+                 msg->buffer + msg->recvlen, ret);
+          auto res = ParseHeader(&msg->header, id);
+          uint16_t connetlen = res.first;
+          msg->header.cliId = header_cliID;
+          msg->header.len = connetlen;
+          logger_->Log(
+              Logger::INFO,
+              "RelayServer:\tClient %d recv header: len %d, cliId %d\n", id,
+              connetlen, header_cliID);
 
+          // client_id_map_[id]->cliId = header_cliID;
           ret = ret - msg->unrecvlen;
           msg->recvlen += msg->unrecvlen;
           msg->unrecvlen = connetlen;
@@ -160,11 +179,16 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
           ret = ret - msg->unrecvlen;
           msg->recvlen += msg->unrecvlen;
           msg->unrecvlen = HEADERSZ;
+          msg->head_recv = false;
         }
       } else {
         /*
           部分接收
         */
+        if (!msg->head_recv) {
+          memcpy(&msg->header + HEADERSZ - msg->unrecvlen,
+                 msg->buffer + msg->recvlen, ret);
+        }
         msg->recvlen += ret;
         msg->unrecvlen -= ret;
         break;
@@ -174,15 +198,15 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id) {
   return ret;
 }
 
-int RelayServer::SendData(MessageInfo *dstmsg, MessageInfo *srcmsg) {
+int RelayServer::SendData(MessageInfo *msg, const size_t &id,
+                          const size_t &fd) {
   // 将src中的信息发送到dst客户端
-  int connfd = dstmsg->connfd;
-  int id = dstmsg->header.cliId;
+  // int connfd = dstmsg->connfd;
 
-  int ret = send(connfd, srcmsg->buffer, srcmsg->recvlen, 0);
+  int ret = send(fd, msg->buffer, msg->recvlen, 0);
   if (ret < 0) {
     if (errno != EWOULDBLOCK) {
-      RemoveClient(connfd);
+      RemoveClient(fd);
       logger_->Log(Logger::ERROR,
                    "RelayServer:\tSEND ERROR: server send to client %d error\n",
                    id);
@@ -197,8 +221,8 @@ int RelayServer::SendData(MessageInfo *dstmsg, MessageInfo *srcmsg) {
     /*
       发送成功，将发送的报文从缓冲区中删除，将整个缓冲区前移
     */
-    memcpy(srcmsg->buffer, srcmsg->buffer + ret, srcmsg->recvlen - ret);
-    srcmsg->recvlen -= ret;
+    memcpy(msg->buffer, msg->buffer + ret, msg->recvlen - ret);
+    msg->recvlen -= ret;
   }
   return ret;
 }
@@ -230,8 +254,8 @@ void RelayServer::StartServer(const std::string &ipaddr, const int port) {
   // std::cout << "inet_pton:\t" << ret << std::endl;
   servaddr_.sin_port = htons(epoll_port_);
   Bind(epoll_sockfd_, (struct sockaddr *)&servaddr_, sizeof(servaddr_));
-  logger_->Log(Logger::INFO, "RelayServer:\tBind to %s:%d\n", ipaddr.c_str(),
-               epoll_port_);
+  logger_->Log(Logger::INFO, "RelayServer:\tBind to %s:%d, fd: %d\n",
+               ipaddr.c_str(), epoll_port_, epoll_sockfd_);
   Listen(epoll_sockfd_, BACKLOG);
   logger_->Log(Logger::INFO, "RelayServer:\tListen on port %s:%d\n",
                ipaddr.c_str(), epoll_port_);
@@ -242,7 +266,7 @@ void RelayServer::StartServer(const std::string &ipaddr, const int port) {
   ASSERT(epoll_fd_ != -1);
 
   /*
-    将epoll_sockfd_添加到epoll_fd_中
+    将epoll_sockfd_添加到epoll_fd_中，均使用LT模式
   */
   AddFd(epoll_fd_, epoll_sockfd_, 1, 0);
   /*
@@ -287,11 +311,10 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
       struct sockaddr_in clientaddr;
       socklen_t len = sizeof(clientaddr);
 
-      // 非阻塞accept
+      // 非阻塞accept，直到connfd返回-1才结束
       for (;;) {
         int connfd =
             accept(epoll_sockfd_, (struct sockaddr *)&clientaddr, &len);
-        logger_->Log(Logger::INFO, "RelayServer:\tconnfd %d\n", connfd);
         if (connfd == -1) {
           if ((errno == ECONNABORTED) || (errno == EWOULDBLOCK) ||
               (errno == EINTR) || (errno == EPROTO)) {
@@ -318,6 +341,7 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
         */
         AddNewClient(client);
       }
+
     } else {
       /*
         已连接套接字
@@ -349,7 +373,7 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
         Epoll有可读事件，读取报文到缓冲区
       */
       if (events[i].events & EPOLLIN) {
-        ssize_t n = RecvData(cur_client_msg, cur_client);
+        ssize_t n = RecvData(cur_client_msg, cur_client, sockfd);
         if (n <= 0) {
           continue;
         }
@@ -357,13 +381,13 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
       /*
         Epoll有可写事件
       */
-      if (events[i].events & EPOLLOUT) {
+      if ((events[i].events & EPOLLOUT) && cur_client_msg->shutwr != 1) {
         if (dst_client_msg != nullptr) {
           /*
             发送报文
           */
           ssize_t n;
-          n = SendData(dst_client_msg, cur_client_msg);
+          n = SendData(dst_client_msg, dst_client, sockfd);
           if (n <= 0) {
             continue;
           }
@@ -385,7 +409,10 @@ void RelayServer::CloseAllFd() {
   }
   for (auto const &client : client_map_) {
     if (static_cast<int>(client.second->connfd) != -1) {
-      shutdown(client.second->connfd, SHUT_WR);
+      if (client.second->shutwr == 0) {
+        shutdown(client.second->connfd, SHUT_WR);
+        client.second->shutwr = 1;
+      }
     }
   }
 }

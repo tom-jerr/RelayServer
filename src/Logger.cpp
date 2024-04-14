@@ -2,6 +2,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <ctime>
 Logger::Logger(const char* filename) { log_fp_ = fopen(filename, "w"); }
 
 Logger::~Logger() { fclose(log_fp_); }

@@ -12,13 +12,66 @@
 /*
   客户端Log
 */
-Logger logger = Logger("send_client.log");
+Logger logger = Logger("send_recv_client.log");
+
+ssize_t Readn(int fd, void *vptr, size_t n) {
+  size_t nleft = 0;
+  ssize_t nread = 0;
+  char *ptr;
+
+  ptr = (char *)vptr;
+  nleft = n;
+  while (nleft > 0) {
+    if ((nread = read(fd, ptr, nleft)) < 0) {
+      if (errno == EINTR)
+        nread = 0; /* and call read() again */
+      else
+        return (-1);
+    } else if (nread == 0)
+      break; /* EOF */
+
+    nleft -= nread;
+    ptr += nread;
+  }
+  if (n - nleft < 0) {
+    logger.Log(Logger::ERROR, "Client readn error\n");
+    exit(1);
+  }
+
+  return (n - nleft); /* return >= 0 */
+}
+
+void RecvMSG(FILE *fp, int sockfd) {
+  char recvline[MAXCHARS + 1];
+  int recvlen;
+  HeaderInfo header;  // 收到的数据包的Header
+  int ret;
+  // while (1) {
+  ret = Readn(sockfd, &header, sizeof(header));
+  if (ret != sizeof(header)) {  // 读取header
+    fprintf(stderr, "echo_rpt: server terminated prematurely\n");
+    return;
+  }
+
+  recvlen = ntohs(header.len);
+  ret = Readn(sockfd, recvline, recvlen);
+  if (ret != recvlen)  // 读取报文内容
+  {
+    fprintf(stderr, "echo_rpt: server terminated prematurely\n");
+    return;
+  }
+
+  // 打印recvline数组
+  std::cout << recvline << "\n";
+  logger.Log(Logger::INFO, recvline);
+  // }
+}
+
 void SendMSG(FILE *fp, int sockfd) {
   char sendline[MAXCHARS + HEADERSZ];
   HeaderInfo header;
   // 将头部预留出大小
   while (fgets(sendline + HEADERSZ, MAXCHARS + 1, fp) != NULL) {
-    std::cout << "Send message: " << sendline + HEADERSZ << std::endl;
     int sendlen = strnlen(sendline + HEADERSZ, MAXCHARS + 1);
     // printf("Length of message: %d\n", sendlen);
     sendline[sendlen + HEADERSZ - 1] = '\0';
@@ -33,6 +86,8 @@ void SendMSG(FILE *fp, int sockfd) {
                sendline + sizeof(HeaderInfo));
 
     Write(sockfd, sendline, sendlen + HEADERSZ);
+
+    RecvMSG(fp, sockfd);
   }
 }
 
@@ -64,16 +119,6 @@ int main(int argc, char *argv[]) {
   printf("Connected to server %s:%s sockfd %d\n", ipaddr.c_str(), port.c_str(),
          sockfd);
   SendMSG(stdin, sockfd);
-  // auto len = htons(5);
-  // uint16_t newlen;
-  // bool flag = false;
-  // while (true) {
-  //   if (!flag) {
-  //     write(sockfd, &len, sizeof(len));
-  //     flag = true;
-  //   }
-  //   read(sockfd, &newlen, sizeof(newlen));
-  //   std::cout << "new len:\t" << ntohs(newlen) << std::endl;
-  // }
+
   Close(sockfd);
 }

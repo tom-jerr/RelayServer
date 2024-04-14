@@ -22,8 +22,8 @@ typedef void sigfunc(int);  // 信号处理函数
 */
 class RelayServer {
  private:
-  struct sockaddr_in servaddr_;             // epoll服务器地址
-  struct epoll_event epoll_;                // epoll事件handler
+  struct sockaddr_in servaddr_;  // epoll服务器地址
+  // struct epoll_event epoll_;                // epoll事件handler
   int epoll_port_;                          // 服务器端口
   int epoll_sockfd_;                        // epoll接收连接fd
   int epoll_fd_;                            // epoll创建的fd
@@ -67,11 +67,11 @@ class RelayServer {
   /*
     发送数据
   */
-  int SendData(MessageInfo* dstmsg, MessageInfo* srcmsg);
+  int SendData(MessageInfo* msg, const size_t& id, const size_t& fd);
   /*
     接收数据
   */
-  int RecvData(MessageInfo* msg, const size_t& id);
+  int RecvData(MessageInfo* msg, const size_t& id, const size_t& fd);
   /*
     向文件中写入接收到的数据
   */

@@ -1,7 +1,9 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 #include <arpa/inet.h>
+#include <bits/types/struct_timespec.h>
 #include <errno.h>
+#include <netinet/in.h>
 #include <strings.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -9,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <utility>
 #define ASSERT(x)                                \
   do {                                           \
     if (!(x)) {                                  \
@@ -22,13 +25,15 @@
 /*
   Params Settings
 */
-#define MAXEVENTS 64  // EPOLL最大事件数，use in epoll_create
-#define MAXHANDLERS 64  // 最大的事件处理器数, use in epoll_event[MAXHANDLERS]
-#define MAXCHARS 5                       // 最大字符数
-#define BUFFERSZ 2048                    // Buffer初始大小
-#define BACKLOG 128                      // listen队列的最大长度
-#define GetDstId(x) (x % 2 ? x : x + 1)  // 获取目的客户端编号
-#define HEADERSZ (sizeof(HeaderInfo))    // 头部大小
+#define MAXEVENTS 10010  // EPOLL最大事件数，use in epoll_create
+#define MAXHANDLERS \
+  10010  // 最大的事件处理器数, use in epoll_event[MAXHANDLERS]
+#define MAXCHARS 30000                       // 最大字符数
+#define BUFFERSZ 12000                       // Buffer初始大小
+#define BACKLOG 10010                        // listen队列的最大长度
+#define GetDstId(x) (x % 2 ? x - 1 : x + 1)  // 获取目的客户端编号
+#define HEADERSZ (sizeof(HeaderInfo))        // 头部大小
+
 /*
   报文头信息：仅仅该信息需要网络传输
 */
@@ -36,6 +41,8 @@
 struct HeaderInfo {
   uint32_t cliId;  // 客户端编号
   uint16_t len;    // 报文长度(不包括头部)
+  uint64_t sec;    /* UTC：秒数 */
+  uint64_t nsec;   /* UTC：纳秒数 */
 };
 #pragma pack()
 /*
@@ -46,6 +53,8 @@ struct HeaderInfo {
 struct MessageInfo {
   HeaderInfo header;         // 报文头
   uint32_t connfd;           // 连接描述符
+  uint32_t cliId;            // 客户端编号
+  int shutwr = 0;            // 是否关闭写端
   bool head_recv = false;    // 报文头是否接收完毕
   bool body_recv = false;    // 报文体是否接收完毕
   int recvlen = 0;           // 已经接收的报文长度
@@ -53,9 +62,39 @@ struct MessageInfo {
   char buffer[BUFFERSZ];     // 报文缓冲区
 };
 /*
+  压力发生器用户缓冲区
+*/
+struct ClientBuffer {
+  HeaderInfo recv;           // 用户接收报文的头部信息
+  HeaderInfo send;           // 用户发送报文的头部信息
+  bool head_recv = false;    // 报文头是否接收完毕
+  int recvlen = 0;           // 已经接收的报文长度
+  int unrecvlen = HEADERSZ;  // 未接收的报文长度
+  char buffer[BUFFERSZ];     // 报文缓冲区
+  char* sendpackets;         // 发送的报文
+  int sendlen = 0;           // 发送的报文长度
+};
+/*
+  客户端信息
+*/
+struct ClientInfo {
+  int connfd;
+  int state{-1};  // -1: 未连接 0: 已连接 1: 关闭写端
+  ClientBuffer* buffer{nullptr};
+};
+/* 将64字节变量从网络字节序变为主机字节序 */
+uint64_t ntoh64(uint64_t net64);
+
+/* 将64字节变量从主机字节序变为网络字节序 */
+uint64_t hton64(uint64_t host64);
+/*
   解析头部信息
 */
-int ParseHeader(HeaderInfo* header);
+std::pair<uint16_t, uint32_t> ParseHeader(HeaderInfo* header, const size_t& id);
+/*
+  获取一个带时间的头部
+*/
+struct timespec GetHeader(uint16_t length, uint32_t id, HeaderInfo* header);
 /*
   地址转换函数
 */

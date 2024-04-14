@@ -1,0 +1,13 @@
+[INFO]: 2024-04-13 10:56:45	Connected to server 127.0.0.1:1234
+
+[INFO]: 2024-04-13 10:56:45	Connected sockfd 4
+
+[INFO]: 2024-04-13 10:57:04	Send message: 1234
+
+[INFO]: 2024-04-13 10:57:04	jklg
+[INFO]: 2024-04-13 10:57:15	Send message: 5678
+
+[INFO]: 2024-04-13 10:57:15	lg
+[INFO]: 2024-04-13 10:57:36	Send message: hello 0
+
+[INFO]: 2024-04-13 10:57:36	hello 1

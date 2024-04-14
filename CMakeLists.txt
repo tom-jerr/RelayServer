@@ -40,6 +40,6 @@ include_directories(include)
 # ------ Source dir ------
 add_subdirectory(src)
 # ------ Test dir ------
-add_subdirectory(test)
+# add_subdirectory(test)
 
 
