@@ -195,7 +195,7 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
     ASSERT(clients_[sockfd].buffer != nullptr);
     ASSERT(clients_[sockfd].buffer->sendpackets != nullptr);
     ClientBuffer *buffer = clients_[sockfd].buffer;
-    if (events[i].events & EPOLLIN) {
+    if ((events[i].events & EPOLLIN) && clients_[sockfd].state != 2) {
       while (true) {
         buffer->recvlen = 0;
         ssize_t ret = recv(sockfd, buffer->buffer, BUFFERSZ, 0);
@@ -218,6 +218,13 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
                 buffer->recvlen += buffer->unrecvlen;
                 buffer->head_recv = false;
                 buffer->unrecvlen = HEADERSZ;
+                logger_->Log(Logger::INFO,
+                             "StressGenerator - client %d - recv "
+                             "packet %d bytes",
+                             sockfd, buffer->recvlen);
+                buffer->recvlen = 0;
+                clients_[sockfd].state = 2;  // 设置状态为已读取报文
+                break;
               }
             }
             // 部分接收
@@ -254,7 +261,7 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
 
     // 需要等待开始记录才能发送数据
     if ((events[i].events & EPOLLOUT) && recordFlag_ == 1 &&
-        clients_[sockfd].state != 1) {
+        clients_[sockfd].state != 1 && clients_[sockfd].state != 2) {
       while (true) {
         ssize_t ret = 0;
         // 说明报文头还未发送
@@ -275,7 +282,11 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
         if (ret >= 0) {
           buffer->sendlen += ret;
           if (buffer->sendlen == static_cast<int>(payloadSize_ + HEADERSZ)) {
+            logger_->Log(Logger::INFO,
+                         "StressGenerator - client %d - send packet %d bytes",
+                         sockfd, buffer->sendlen);
             buffer->sendlen = 0;
+            clients_[sockfd].state = 1;
             break;
           }
         } else {
@@ -321,6 +332,9 @@ int StressGenerator::EventsLoop(const char *ip, const char *port) {
     if (EventsHandler(events, nready) < 0) {
       logger_->Log(Logger::ERROR, "StressGenerator - EventsHandler error");
       CloseAllClients();
+    }
+    if (g_sendPackets == cliCount_ && g_recvPackets == cliCount_) {
+      break;
     }
     if (exit_flag_ || shutdown_flag_) {
       CloseAllClients();

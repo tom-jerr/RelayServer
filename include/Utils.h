@@ -79,7 +79,7 @@ struct ClientBuffer {
 */
 struct ClientInfo {
   int connfd;
-  int state{-1};  // -1: 未连接 0: 已连接 1: 关闭写端
+  int state{-1};  // -1: 未连接 0: 已连接 1: 已经写入报文 2：已经读取报文
   ClientBuffer* buffer{nullptr};
 };
 /* 将64字节变量从网络字节序变为主机字节序 */
