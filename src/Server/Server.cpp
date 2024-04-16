@@ -158,7 +158,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
           // 解析头部数据，获取报文体长度
           uint32_t header_cliID = msg->header.cliId;
           memcpy(&msg->header + HEADERSZ - msg->unrecvlen,
-                 msg->buffer + msg->recvlen, ret);
+                 msg->buffer + msg->recvlen, msg->unrecvlen);
           auto res = ParseHeader(&msg->header, id);
           uint16_t connetlen = res.first;
           msg->header.cliId = header_cliID;
@@ -180,6 +180,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
           msg->recvlen += msg->unrecvlen;
           msg->unrecvlen = HEADERSZ;
           msg->head_recv = false;
+          break;
         }
       } else {
         /*
@@ -391,6 +392,9 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
           if (n <= 0) {
             continue;
           }
+          logger_->Log(Logger::INFO,
+                       "RelayServer:\tServer send to client %d success\n",
+                       cur_client);
         }
       }
     }

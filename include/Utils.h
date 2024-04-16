@@ -135,6 +135,7 @@ int Close(int fd);
   向epoll中加入事件
 */
 void AddFd(int epoll_fd, int fd, bool enable_out, bool enable_et);
+void AddOutFd(int epoll_fd, int fd);
 /*
   修改epoll中的事件
 */

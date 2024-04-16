@@ -61,6 +61,7 @@ void StressGenerator::AddClient(int sockfd, int state) {
   }
   clients_[sockfd] = client;
   AddFd(epollfd_, sockfd, 1, 0);
+  // AddOutFd(epollfd_, sockfd);
 }
 
 int StressGenerator::AddAllClients() {
@@ -195,10 +196,12 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
     ASSERT(clients_[sockfd].buffer != nullptr);
     ASSERT(clients_[sockfd].buffer->sendpackets != nullptr);
     ClientBuffer *buffer = clients_[sockfd].buffer;
-    if ((events[i].events & EPOLLIN) && clients_[sockfd].state != 2) {
+    if ((events[i].events & EPOLLIN) && clients_[sockfd].state == 1) {
       while (true) {
         buffer->recvlen = 0;
         ssize_t ret = recv(sockfd, buffer->buffer, BUFFERSZ, 0);
+        // std::cout << "sockfd " << sockfd << " recv ret: " << ret <<
+        // std::endl;
         if (ret > 0) {
           while (true) {
             // 接收全部的报头或者报文
@@ -241,9 +244,9 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
         }
         // ret == 0
         else if (ret == 0) {
-          if (clients_[sockfd].state == 0) {
+          if (clients_[sockfd].state == 1) {
             shutdown(sockfd, SHUT_WR);
-          } else {
+          } else if (clients_[sockfd].state == 2) {
             shutdown(sockfd, SHUT_RD);
           }
           RemoveClient(sockfd);
@@ -254,6 +257,7 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
                          "StressGenerator -client %d -  recv error", sockfd);
             RemoveClient(sockfd);
           }
+
           break;
         }
       }
@@ -287,6 +291,7 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
                          sockfd, buffer->sendlen);
             buffer->sendlen = 0;
             clients_[sockfd].state = 1;
+            // ModFd(epollfd_, sockfd, EPOLLIN);
             break;
           }
         } else {

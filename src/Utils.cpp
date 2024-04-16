@@ -123,6 +123,14 @@ void AddFd(int epoll_fd, int fd, bool enable_out, bool enable_et) {
   ASSERT(ret != -1);
 }
 
+void AddOutFd(int epoll_fd, int fd) {
+  struct epoll_event event;
+  event.data.fd = fd;
+  event.events = EPOLLOUT;
+  int ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
+  ASSERT(ret != -1);
+}
+
 void ModFd(int epoll_fd, int fd, int ev) {
   struct epoll_event event;
   if (ev & EPOLLIN) {
