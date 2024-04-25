@@ -19,14 +19,13 @@
 
 int RelayServer::exit_flag_ = 0;  // 需要在外部进行声明-zx
 
-RelayServer::RelayServer()
-    : epoll_sockfd_(-1), epoll_fd_(-1), temp_file_(false) {
+RelayServer::RelayServer() : epoll_sockfd_(-1), epoll_fd_(-1) {
   Signal(SIGINT, SigIntHandler);
   logger_ = new Logger("server.log");
 }
 
 RelayServer::RelayServer(bool support_tmpfile)
-    : epoll_sockfd_(-1), epoll_fd_(-1), temp_file_(true) {
+    : epoll_sockfd_(-1), epoll_fd_(-1) {
   Signal(SIGINT, SigIntHandler);
   logger_ = new Logger("server.log");
 }
@@ -75,39 +74,6 @@ int RelayServer::RemoveClient(const int &connfd) {
   return 0;
 }
 
-void RelayServer::WriteMsg2File(const size_t &id,
-                                const std::string &file_name) {
-  FILE *fp = fopen(file_name.c_str(), "a+");
-  if (fp == nullptr) {
-    logger_->Log(Logger::ERROR,
-                 "RelayServer:\tOPEN FILE ERROR: client %d open file error\n",
-                 id);
-    return;
-  }
-  // 向文件中写入数据
-  fwrite(client_map_[id]->buffer, sizeof(char), client_map_[id]->header.len - 1,
-         fp);
-  // 将文件偏移移到开头
-  fseek(fp, 0, SEEK_SET);
-  client_file_map_[id] = fp;
-}
-
-char *RelayServer::ReadMsgFromFile(const size_t &id) {
-  FILE *fp = client_file_map_[id];
-  if (fp == nullptr) {
-    logger_->Log(Logger::ERROR,
-                 "RelayServer:\tNO FILE ERROR: client %d has no file error\n",
-                 id);
-    return nullptr;
-  }
-  // 将文件偏移移到开头
-  fseek(fp, 0, SEEK_SET);
-  // 读取文件
-  char *buffer = new char[client_map_[id]->header.len];
-  fread(buffer, sizeof(char), client_map_[id]->header.len - 1, fp);
-  return buffer;
-}
-
 int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
                           const size_t &fd) {
   // 获取头部和连接描述符
@@ -137,9 +103,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
     */
     if (msg->shutwr == 0) {
       msg->shutwr = 1;
-      shutdown(fd, SHUT_WR);  // 发送FIN包
-    } else {
-      shutdown(fd, SHUT_RD);  // 发送FIN包
+      shutdown(fd, SHUT_WR);  // 关闭写端
     }
     RemoveClient(fd);
 
@@ -180,7 +144,7 @@ int RelayServer::RecvData(MessageInfo *msg, const size_t &id,
           msg->recvlen += msg->unrecvlen;
           msg->unrecvlen = HEADERSZ;
           msg->head_recv = false;
-          break;
+          // break;
         }
       } else {
         /*
@@ -359,15 +323,10 @@ int RelayServer::EventsHandler(struct epoll_event *events, const int &nready) {
 
       if (dst_client_msg == nullptr) {
         /*
-          目的客户端不存在
+          目的客户端不存在，抛弃当前报文，即直接进入下一次循环
         */
-        // 如果支持暂存，将报文写入文件
-        // if (this->temp_file_) {
-        //   std::cout << "Save msg to server\n";
-        //   std::string file_name = std::to_string(cur_client) + "_file";
-        //   WriteMsg2File(cur_client, file_name);
-        // }
-        // logger_->Log(Logger::INFO, "INFO: dst client is not connected\n");
+        //
+        continue;
       }
 
       /*

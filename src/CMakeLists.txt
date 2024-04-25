@@ -1,5 +1,5 @@
-# add_library(RelayLib STATIC  Utils.cpp Server.cpp Logger.cpp StressGenerator.cpp)
-# add_library(StressGenerator STATIC StressGenerator.cpp)
+add_library(RelayLib STATIC  Utils.cpp Server/Server.cpp Logger.cpp)
+
 list(APPEND ELF_DIR Server Generator)
 set(MAIN_SRC Utils.cpp Logger.cpp)
 foreach(ELF ${ELF_DIR})

@@ -46,7 +46,7 @@ struct HeaderInfo {
 };
 #pragma pack()
 /*
-  报文信息
+  报文信息：服务器内部维护信息
   recvlen：最终长度为头部长度+报文体长度
   unrecvlen：不停在头部长度和报文体长度间切换
 */

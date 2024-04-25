@@ -33,15 +33,15 @@ StressGenerator::StressGenerator() {
 }
 StressGenerator::~StressGenerator() {
   delete logger_;
-  if (payload_ != nullptr) {
-    delete[] payload_;
+  if (packet_ != nullptr) {
+    delete[] packet_;
   }
 }
 
 void StressGenerator::GeneratePacket() {
-  ASSERT(payload_ == nullptr);
-  payload_ = new char[payloadSize_];
-  memset(payload_, 'a', payloadSize_);
+  ASSERT(packet_ == nullptr);
+  packet_ = new char[payloadSize_];
+  memset(packet_, 'a', payloadSize_);
   logger_->Log(Logger::INFO, "StressGenerator - Generate %zd bytes Packet",
                payloadSize_);
 }
@@ -54,7 +54,7 @@ void StressGenerator::AddClient(int sockfd, int state) {
   client.state = state;
   if (state == 0) {
     client.buffer = new ClientBuffer;
-    client.buffer->sendpackets = this->payload_;
+    client.buffer->sendpackets = this->packet_;
     ++connNum_;
   } else {
     ++unconnNum_;
@@ -64,10 +64,10 @@ void StressGenerator::AddClient(int sockfd, int state) {
   // AddOutFd(epollfd_, sockfd);
 }
 
-int StressGenerator::AddAllClients() {
+int StressGenerator::AddDoubleClients() {
   int errorTimes = ERROR_MAX;
   int connTimes = CONN_SIZE;
-  while (clients_.size() < cliCount_ && connTimes > 0) {
+  while (clients_.size() < cliCount_) {
     int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
       logger_->Log(Logger::ERROR, "StressGenerator - socket error");
@@ -83,7 +83,8 @@ int StressGenerator::AddAllClients() {
     if ((ret = connect(sockfd, (struct sockaddr *)&servaddr_,
                        sizeof(servaddr_))) < 0) {
       if (errno != EINPROGRESS) {
-        logger_->Log(Logger::ERROR, "StressGenerator - connect error");
+        logger_->Log(Logger::ERROR, "StressGenerator - sockfd %d connect error",
+                     sockfd);
         close(sockfd);
         errorTimes--;
         if (errorTimes < 0) {
@@ -139,7 +140,7 @@ void StressGenerator::CloseAllClients() {
   }
 }
 
-void StressGenerator::AddDelay(struct timespec *timestamp) {
+void StressGenerator::CalcDelay(struct timespec *timestamp) {
   struct timespec now;
   clock_gettime(CLOCK_REALTIME, &now);
   if (timestamp->tv_sec > now.tv_sec ||
@@ -156,7 +157,7 @@ uint16_t StressGenerator::HandleHeaderWithTime(HeaderInfo *header,
   struct timespec timestamp;
   timestamp.tv_sec = ntoh64(header->sec);
   timestamp.tv_nsec = ntoh64(header->nsec);
-  AddDelay(&timestamp);
+  CalcDelay(&timestamp);
   return msglen;
 }
 
@@ -179,7 +180,7 @@ int StressGenerator::EventsHandler(struct epoll_event *events,
       }
       clients_[sockfd].state = 0; /* 设置状态为已连接(等待接收头部) */
       clients_[sockfd].buffer = new ClientBuffer; /* 分配缓冲区 */
-      clients_[sockfd].buffer->sendpackets = this->payload_;
+      clients_[sockfd].buffer->sendpackets = this->packet_;
       ++connNum_;
       --unconnNum_;
       logger_->Log(Logger::INFO, "StressGenerator - client %d - connected",
@@ -322,8 +323,8 @@ int StressGenerator::EventsLoop(const char *ip, const char *port) {
   while (true) {
     // 添加客户端
     if (clients_.size() < cliCount_ && shutdown_flag_ == 0) {
-      if (AddAllClients() < 0) {
-        logger_->Log(Logger::ERROR, "StressGenerator - AddAllClients error");
+      if (AddDoubleClients() < 0) {
+        logger_->Log(Logger::ERROR, "StressGenerator - AddDoubleClients error");
         CloseAllClients();
       }
     }
@@ -353,8 +354,8 @@ int StressGenerator::EventsLoop(const char *ip, const char *port) {
   return 0;
 }
 
-int StressGenerator::StartPress(const char *ip, const char *port, int sessions,
-                                int packetSize) {
+int StressGenerator::StartStress(const char *ip, const char *port, int sessions,
+                                 int packetSize) {
   // 参数检查
   if (sessions <= 0) {
     std::cout << "sessions must be greater than 0" << std::endl;
@@ -374,7 +375,7 @@ int StressGenerator::StartPress(const char *ip, const char *port, int sessions,
 
   // 生成报文
   GeneratePacket();
-  logger_->Log(Logger::INFO, "StressGenerator - StartPress");
+  logger_->Log(Logger::INFO, "StressGenerator - StartStress");
   int ret = EventsLoop(ip, port);
 
   if (recordFlag_ == 0) {
