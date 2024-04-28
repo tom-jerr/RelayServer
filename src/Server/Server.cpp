@@ -40,6 +40,12 @@ RelayServer::~RelayServer() {
   if (epoll_fd_ != -1) {
     close(epoll_fd_);
   }
+  for (auto const &client : client_id_map_) {
+    if (client.second != nullptr) {
+      delete client.second;
+    }
+  }
+  delete logger_;
 }
 
 void RelayServer::UpdateNextClientId() { next_client_id_++; }
@@ -60,6 +66,9 @@ int RelayServer::AddNewClient(MessageInfo *clientInfo) {
 int RelayServer::RemoveClient(const int &connfd) {
   ASSERT(client_map_.find(connfd) != client_map_.end());
   size_t cliId = client_map_[connfd]->header.cliId;
+  if (client_id_map_.find(cliId) != client_id_map_.end()) {
+    delete client_id_map_[cliId];
+  }
   client_map_.erase(connfd);
   client_id_map_.erase(cliId);
   if (cliId < next_client_id_) {
@@ -383,9 +392,6 @@ void RelayServer::CloseAllFd() {
 void RelayServer::ExitEpoll() {
   logger_->Log(Logger::INFO, "RelayServer:\treceived SIGINT signal\n");
   CloseAllFd();
-  if (client_map_.empty()) {
-    logger_->Log(Logger::INFO, "RelayServer:\tAll clients are not connected\n");
-  }
 }
 
 sigfunc *RelayServer::Signal(int signo, sigfunc *func) {

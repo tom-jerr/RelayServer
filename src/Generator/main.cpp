@@ -10,6 +10,6 @@ int main(int argc, char** argv) {
   // int sessionCount = atoi(argv[3]);
   // int packetSize = atoi(argv[4]);
   StressGenerator generator;
-  generator.StartStress("127.0.0.1", "1234", 100, 10022);
+  generator.StartStress("127.0.0.1", "1234", 2000, 10000);
   return 0;
 }

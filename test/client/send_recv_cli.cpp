@@ -48,6 +48,9 @@ void RecvMSG(FILE *fp, int sockfd) {
   int ret;
   // while (1) {
   ret = Readn(sockfd, &header, sizeof(header));
+  if (ret == 0) {
+    return;
+  }
   if (ret != sizeof(header)) {  // 读取header
     fprintf(stderr, "echo_rpt: server terminated prematurely\n");
     return;
@@ -71,22 +74,23 @@ void SendMSG(FILE *fp, int sockfd) {
   char sendline[MAXCHARS + HEADERSZ];
   HeaderInfo header;
   // 将头部预留出大小
-  while (fgets(sendline + HEADERSZ, MAXCHARS + 1, fp) != NULL) {
-    int sendlen = strnlen(sendline + HEADERSZ, MAXCHARS + 1);
-    // printf("Length of message: %d\n", sendlen);
-    sendline[sendlen + HEADERSZ - 1] = '\0';
-    // 通过网络传输，需要改变字节序
-    // printf("Transfer length: %ld\n", sendlen + HEADERSZ);
-    header.len = htons(sendlen);
-    header.cliId = htonl(1);
-    // printf("net byte order: %d\n", header.len);
-    memcpy(sendline, &header, HEADERSZ);
+  while (true) {
+    if (fgets(sendline + HEADERSZ, MAXCHARS + 1, fp) != NULL) {
+      int sendlen = strnlen(sendline + HEADERSZ, MAXCHARS + 1);
+      // printf("Length of message: %d\n", sendlen);
+      sendline[sendlen + HEADERSZ - 1] = '\0';
+      // 通过网络传输，需要改变字节序
+      // printf("Transfer length: %ld\n", sendlen + HEADERSZ);
+      header.len = htons(sendlen);
+      header.cliId = htonl(1);
+      // printf("net byte order: %d\n", header.len);
+      memcpy(sendline, &header, HEADERSZ);
 
-    logger.Log(Logger::INFO, "Send message: %s\n",
-               sendline + sizeof(HeaderInfo));
+      logger.Log(Logger::INFO, "Send message: %s\n",
+                 sendline + sizeof(HeaderInfo));
 
-    Write(sockfd, sendline, sendlen + HEADERSZ);
-
+      Write(sockfd, sendline, sendlen + HEADERSZ);
+    }
     RecvMSG(fp, sockfd);
   }
 }

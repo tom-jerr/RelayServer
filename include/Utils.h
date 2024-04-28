@@ -29,7 +29,7 @@
 #define MAXHANDLERS \
   10010  // 最大的事件处理器数, use in epoll_event[MAXHANDLERS]
 #define MAXCHARS 30000                       // 最大字符数
-#define BUFFERSZ 12000                       // Buffer初始大小
+#define BUFFERSZ 140000                      // Buffer初始大小
 #define BACKLOG 10010                        // listen队列的最大长度
 #define GetDstId(x) (x % 2 ? x - 1 : x + 1)  // 获取目的客户端编号
 #define HEADERSZ (sizeof(HeaderInfo))        // 头部大小
