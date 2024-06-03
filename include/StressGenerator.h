@@ -39,7 +39,7 @@ class StressGenerator {
   uint64_t g_sendPackets{0};    // 发送的报文数量
   double g_totalDelay{0};       // 总延迟
   double g_averageDelay{0};     // 报文平均延迟
-  struct timespec g_startTime;  // 压力测试开始事件
+  struct timespec g_startTime;  // 压力测试开始时间
   struct timespec g_endTime;    // SIGINT接收时间
  private:
   /**

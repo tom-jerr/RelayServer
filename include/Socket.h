@@ -25,6 +25,7 @@ class NSocket {
   void Listen() const;
   int Accept(NetAddress &client_addr);
 
+ private:
   void SetReusable();
   void SetNonBlocking();
 
